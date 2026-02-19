@@ -1,0 +1,45 @@
+{
+  "name": "snapcut",
+  "version": "1.0.0",
+  "description": "SnapCut — Lightning-fast text expander for your desktop",
+  "main": "main/main.js",
+  "scripts": {
+    "start": "concurrently \"npm run dev:renderer\" \"wait-on http://localhost:5173 && electron .\"",
+    "dev:renderer": "cd renderer && npx vite --port 5173",
+    "build": "cd renderer && npx vite build && electron-builder",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "author": "SnapCut",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron": "^28.1.0",
+    "electron-builder": "^24.9.1",
+    "wait-on": "^7.2.0"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.4.3",
+    "electron-store": "^8.1.0",
+    "uiohook-napi": "^1.5.4"
+  },
+  "build": {
+    "appId": "com.snapcut.app",
+    "productName": "SnapCut",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main/**/*",
+      "renderer/dist/**/*"
+    ],
+    "mac": {
+      "target": "dmg"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
+}
