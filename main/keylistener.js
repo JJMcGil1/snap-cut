@@ -5,8 +5,11 @@
  * No trigger key needed — type the shortcut, it expands.
  */
 
-const { execFile } = require('child_process');
-const { clipboard } = require('electron');
+const { execFile, spawn } = require('child_process');
+const { clipboard, nativeImage } = require('electron');
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
 
 let buffer = '';
 let snippetMap = {};
@@ -14,6 +17,83 @@ let shortcutList = [];  // sorted longest-first for greedy matching
 let uiohook = null;
 let active = false;
 let expanding = false;  // prevent re-entry during expansion
+let popSoundPath = null; // path to generated WAV file
+
+// ── Pop Sound Generator ──
+// Generates a short descending sine-wave "pop" as a WAV file
+function generatePopSound() {
+  const sampleRate = 44100;
+  const duration = 0.10;        // 100ms
+  const startFreq = 800;        // Hz
+  const endFreq = 200;          // Hz
+  const startVol = 0.15;
+  const endVol = 0.01;
+  const numSamples = Math.floor(sampleRate * duration);
+
+  // 16-bit mono PCM samples
+  const samples = Buffer.alloc(numSamples * 2);
+  let phase = 0;
+
+  for (let i = 0; i < numSamples; i++) {
+    const t = i / numSamples;  // 0..1
+    // Linear frequency sweep
+    const freq = startFreq + (endFreq - startFreq) * t;
+    // Linear volume fade
+    const vol = startVol + (endVol - startVol) * t;
+
+    phase += (2 * Math.PI * freq) / sampleRate;
+    const sample = Math.sin(phase) * vol;
+
+    // Convert to 16-bit signed integer
+    const int16 = Math.max(-32768, Math.min(32767, Math.round(sample * 32767)));
+    samples.writeInt16LE(int16, i * 2);
+  }
+
+  // Build WAV header (44 bytes) + data
+  const dataSize = samples.length;
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0);                        // ChunkID
+  header.writeUInt32LE(36 + dataSize, 4);          // ChunkSize
+  header.write('WAVE', 8);                         // Format
+  header.write('fmt ', 12);                        // Subchunk1ID
+  header.writeUInt32LE(16, 16);                    // Subchunk1Size (PCM)
+  header.writeUInt16LE(1, 20);                     // AudioFormat (1=PCM)
+  header.writeUInt16LE(1, 22);                     // NumChannels (mono)
+  header.writeUInt32LE(sampleRate, 24);            // SampleRate
+  header.writeUInt32LE(sampleRate * 2, 28);        // ByteRate (sampleRate * numChannels * bitsPerSample/8)
+  header.writeUInt16LE(2, 32);                     // BlockAlign (numChannels * bitsPerSample/8)
+  header.writeUInt16LE(16, 34);                    // BitsPerSample
+  header.write('data', 36);                        // Subchunk2ID
+  header.writeUInt32LE(dataSize, 40);              // Subchunk2Size
+
+  const wav = Buffer.concat([header, samples]);
+
+  // Write to temp directory
+  const tmpPath = path.join(os.tmpdir(), 'snapcut-pop.wav');
+  try {
+    fs.writeFileSync(tmpPath, wav);
+    popSoundPath = tmpPath;
+    console.log('[SnapCut] Pop sound generated:', tmpPath);
+  } catch (err) {
+    console.error('[SnapCut] Failed to generate pop sound:', err.message);
+  }
+}
+
+/**
+ * Play the pop sound (fire-and-forget, detached).
+ */
+function playPopSound() {
+  if (!popSoundPath) return;
+  try {
+    const child = spawn('afplay', [popSoundPath], {
+      detached: true,
+      stdio: 'ignore',
+    });
+    child.unref();
+  } catch (err) {
+    // Silently ignore — sound is non-critical
+  }
+}
 
 // Map uiohook keycodes to characters
 const KEYCODE_MAP = {
@@ -33,8 +113,27 @@ const BACKSPACE = 14;
 /**
  * Run a single AppleScript that does backspaces + paste in one shot.
  * Uses execFile (async, no shell) — immune to EPIPE crashes.
+ * Preserves the user's clipboard contents around the expansion.
  */
 function runExpansion(deleteCount, expandedText) {
+  // ── Play pop sound immediately (fire-and-forget) ──
+  playPopSound();
+
+  // ── Save current clipboard contents ──
+  let savedText = null;
+  let savedImage = null;
+  try {
+    const img = clipboard.readImage();
+    if (img && !img.isEmpty()) {
+      savedImage = img;
+    } else {
+      savedText = clipboard.readText();
+    }
+  } catch {
+    // If clipboard read fails, we'll just not restore
+  }
+
+  // Write expansion text to clipboard for paste
   clipboard.writeText(expandedText);
 
   // Single AppleScript: backspaces then immediate paste — no artificial delays
@@ -46,9 +145,26 @@ keystroke "v" using command down
 end tell`;
 
   execFile('osascript', ['-e', script], (err) => {
-    expanding = false;
+    // ── Restore clipboard after paste completes ──
+    // Small delay to ensure paste has read the clipboard before we restore
+    setTimeout(() => {
+      try {
+        if (savedImage) {
+          clipboard.writeImage(savedImage);
+        } else if (savedText !== null) {
+          clipboard.writeText(savedText);
+        } else {
+          clipboard.clear();
+        }
+      } catch {
+        // If restore fails, just leave it
+      }
+      expanding = false;
+    }, 150);
+
     if (err) {
       console.error('[SnapCut] Expansion osascript failed:', err.message);
+      expanding = false; // Unlock immediately on error
     }
   });
 }
@@ -81,6 +197,11 @@ function updateSnippets(snippets) {
 }
 
 function startKeyListener(snippets, _expandCallback) {
+  // Generate pop sound on first call
+  if (!popSoundPath) {
+    generatePopSound();
+  }
+
   if (active) {
     updateSnippets(snippets);
     return;

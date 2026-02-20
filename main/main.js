@@ -141,6 +141,11 @@ app.whenReady().then(() => {
   createWindow();
   createTray();
 
+  // Auto-start on login (only for packaged builds)
+  if (!isDev) {
+    app.setLoginItemSettings({ openAtLogin: true, openAsHidden: true });
+  }
+
   // Start global key listener for snippet expansion
   const snippets = db.getAllSnippets();
   startKeyListener(snippets);
