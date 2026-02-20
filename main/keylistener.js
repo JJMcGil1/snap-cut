@@ -20,6 +20,11 @@ let expanding = false;  // prevent re-entry during expansion
 let popSoundPath = null; // path to generated WAV file
 let onExpansionDone = null; // callback after successful expansion
 
+// ── Clipboard preservation state (module-level to survive rapid-fire) ──
+let savedClipboard = null;       // { type: 'text'|'image', data } or null
+let clipboardRestoreTimer = null; // pending restore timer
+const CLIPBOARD_RESTORE_DELAY = 800; // ms — generous delay for target app to process Cmd+V
+
 // ── Pop Sound Generator ──
 // Generates a short descending sine-wave "pop" as a WAV file
 function generatePopSound() {
@@ -114,24 +119,39 @@ const BACKSPACE = 14;
 /**
  * Run a single AppleScript that does backspaces + paste in one shot.
  * Uses execFile (async, no shell) — immune to EPIPE crashes.
- * Preserves the user's clipboard contents around the expansion.
+ *
+ * CLIPBOARD STRATEGY:
+ * - Save clipboard ONCE (only if no pending restore — handles rapid-fire)
+ * - Cancel any pending restore timer on new expansion
+ * - Unlock `expanding` flag IMMEDIATELY when osascript returns (don't block keystrokes)
+ * - Restore clipboard 800ms later (generous — target app needs time to process Cmd+V)
  */
 function runExpansion(deleteCount, expandedText) {
   // ── Play pop sound immediately (fire-and-forget) ──
   playPopSound();
 
-  // ── Save current clipboard contents ──
-  let savedText = null;
-  let savedImage = null;
-  try {
-    const img = clipboard.readImage();
-    if (img && !img.isEmpty()) {
-      savedImage = img;
-    } else {
-      savedText = clipboard.readText();
+  // ── Save clipboard ONLY if we don't have a pending restore ──
+  // This prevents saving expansion text from a previous rapid-fire expansion
+  if (!savedClipboard) {
+    try {
+      const img = clipboard.readImage();
+      if (img && !img.isEmpty()) {
+        savedClipboard = { type: 'image', data: img };
+      } else {
+        const text = clipboard.readText();
+        if (text) {
+          savedClipboard = { type: 'text', data: text };
+        }
+      }
+    } catch {
+      // If clipboard read fails, we just won't restore
     }
-  } catch {
-    // If clipboard read fails, we'll just not restore
+  }
+
+  // ── Cancel any pending clipboard restore (rapid-fire safety) ──
+  if (clipboardRestoreTimer) {
+    clearTimeout(clipboardRestoreTimer);
+    clipboardRestoreTimer = null;
   }
 
   // Write expansion text to clipboard for paste
@@ -146,29 +166,32 @@ keystroke "v" using command down
 end tell`;
 
   execFile('osascript', ['-e', script], (err) => {
-    // ── Restore clipboard after paste completes ──
-    // Small delay to ensure paste has read the clipboard before we restore
-    setTimeout(() => {
+    // ── IMMEDIATELY unlock keystrokes — osascript is done ──
+    expanding = false;
+
+    if (err) {
+      console.error('[SnapCut] Expansion osascript failed:', err.message);
+    }
+
+    // ── Restore clipboard after generous delay ──
+    // The target app receives Cmd+V from the event queue AFTER osascript returns.
+    // It then needs to read the clipboard. 800ms gives even slow apps plenty of time.
+    clipboardRestoreTimer = setTimeout(() => {
+      clipboardRestoreTimer = null;
       try {
-        if (savedImage) {
-          clipboard.writeImage(savedImage);
-        } else if (savedText !== null) {
-          clipboard.writeText(savedText);
-        } else {
-          clipboard.clear();
+        if (savedClipboard && savedClipboard.type === 'image') {
+          clipboard.writeImage(savedClipboard.data);
+        } else if (savedClipboard && savedClipboard.type === 'text') {
+          clipboard.writeText(savedClipboard.data);
         }
       } catch {
         // If restore fails, just leave it
       }
-      expanding = false;
-      // Notify that expansion completed (for real-time dashboard updates)
-      if (onExpansionDone) try { onExpansionDone(); } catch {}
-    }, 150);
+      savedClipboard = null;
 
-    if (err) {
-      console.error('[SnapCut] Expansion osascript failed:', err.message);
-      expanding = false; // Unlock immediately on error
-    }
+      // Notify dashboard after full cycle completes
+      if (onExpansionDone) try { onExpansionDone(); } catch {}
+    }, CLIPBOARD_RESTORE_DELAY);
   });
 }
 
