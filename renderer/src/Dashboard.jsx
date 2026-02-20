@@ -60,6 +60,14 @@ export default function Dashboard() {
 
   useEffect(() => {
     loadStats();
+
+    // Subscribe to real-time expansion events from the main process
+    if (window.snapcut?.onExpansionDone) {
+      const cleanup = window.snapcut.onExpansionDone(() => {
+        loadStats();
+      });
+      return cleanup; // unsubscribe on unmount
+    }
   }, []);
 
   const loadStats = async () => {

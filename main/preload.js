@@ -30,4 +30,11 @@ contextBridge.exposeInMainWorld('snapcut', {
   // Theme
   getTheme: () => ipcRenderer.invoke('theme:get'),
   toggleTheme: () => ipcRenderer.invoke('theme:toggle'),
+
+  // Real-time expansion notifications (for live dashboard)
+  onExpansionDone: (callback) => {
+    ipcRenderer.on('expansion:done', callback);
+    // Return cleanup function
+    return () => ipcRenderer.removeListener('expansion:done', callback);
+  },
 });

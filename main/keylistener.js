@@ -18,6 +18,7 @@ let uiohook = null;
 let active = false;
 let expanding = false;  // prevent re-entry during expansion
 let popSoundPath = null; // path to generated WAV file
+let onExpansionDone = null; // callback after successful expansion
 
 // ── Pop Sound Generator ──
 // Generates a short descending sine-wave "pop" as a WAV file
@@ -160,6 +161,8 @@ end tell`;
         // If restore fails, just leave it
       }
       expanding = false;
+      // Notify that expansion completed (for real-time dashboard updates)
+      if (onExpansionDone) try { onExpansionDone(); } catch {}
     }, 150);
 
     if (err) {
@@ -196,7 +199,10 @@ function updateSnippets(snippets) {
   console.log('[SnapCut] Snippet map updated with', shortcutList.length, 'shortcuts');
 }
 
-function startKeyListener(snippets, _expandCallback) {
+function startKeyListener(snippets, expansionCallback) {
+  // Store the notification callback
+  if (expansionCallback) onExpansionDone = expansionCallback;
+
   // Generate pop sound on first call
   if (!popSoundPath) {
     generatePopSound();

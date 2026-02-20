@@ -146,9 +146,16 @@ app.whenReady().then(() => {
     app.setLoginItemSettings({ openAtLogin: true, openAsHidden: true });
   }
 
+  // Notify renderer when an expansion completes (for real-time dashboard)
+  const notifyExpansion = () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('expansion:done');
+    }
+  };
+
   // Start global key listener for snippet expansion
   const snippets = db.getAllSnippets();
-  startKeyListener(snippets);
+  startKeyListener(snippets, notifyExpansion);
 
   // Refresh snippet map when snippets change
   ipcMain.on('snippets:changed', () => {
