@@ -38,13 +38,15 @@ function timeAgo(dateStr) {
   return d.toLocaleDateString();
 }
 
-function getCategoryColor(cat) {
-  if (!cat) return '#6366f1';
-  const c = cat.toLowerCase();
-  if (c.includes('dev')) return '#3b82f6';
-  if (c.includes('email') || c.includes('mail')) return '#ec4899';
-  if (c.includes('personal')) return '#10b981';
-  return '#6366f1';
+// Default fallback colors
+const FALLBACK_COLORS = ['#dc3c48', '#5887cc', '#3cba76', '#9b7db8', '#d4924a', '#2ba89c'];
+
+function getCategoryColor(catName, categoryMap) {
+  if (categoryMap && categoryMap[catName]) return categoryMap[catName];
+  // Fallback: hash the name to pick a stable color
+  if (!catName) return FALLBACK_COLORS[0];
+  const hash = catName.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+  return FALLBACK_COLORS[hash % FALLBACK_COLORS.length];
 }
 
 function calcTimeSaved(keystrokesSaved, wpm) {
@@ -53,10 +55,14 @@ function calcTimeSaved(keystrokesSaved, wpm) {
   return charsPerSec > 0 ? Math.round(keystrokesSaved / charsPerSec) : 0;
 }
 
-export default function Dashboard() {
+export default function Dashboard({ categories = [] }) {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [wpm, setWpm] = useState(40);
+
+  // Build name→color map from categories prop
+  const categoryColorMap = {};
+  categories.forEach((c) => { categoryColorMap[c.name] = c.color; });
 
   useEffect(() => {
     loadStats();
@@ -243,7 +249,7 @@ export default function Dashboard() {
                   <div key={cat.category} className="dash-category-row">
                     <div
                       className="dash-category-dot"
-                      style={{ background: getCategoryColor(cat.category) }}
+                      style={{ background: getCategoryColor(cat.category, categoryColorMap) }}
                     />
                     <div className="dash-category-info">
                       <div className="dash-category-name">{cat.category}</div>
@@ -252,7 +258,7 @@ export default function Dashboard() {
                           className="dash-category-bar-fill"
                           style={{
                             width: `${Math.max(4, (cat.total_uses / totalCatUses) * 100)}%`,
-                            background: getCategoryColor(cat.category),
+                            background: getCategoryColor(cat.category, categoryColorMap),
                           }}
                         />
                       </div>

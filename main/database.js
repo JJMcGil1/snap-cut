@@ -7,6 +7,8 @@ const db = new Database(dbPath);
 
 // Enable WAL mode for better performance
 db.pragma('journal_mode = WAL');
+// Enable foreign key enforcement (required for ON DELETE CASCADE)
+db.pragma('foreign_keys = ON');
 
 // ── Schema ──
 db.exec(`
@@ -33,10 +35,15 @@ db.exec(`
   );
 `);
 
+// Add icon column if missing (migration)
+try {
+  db.exec(`ALTER TABLE categories ADD COLUMN icon TEXT DEFAULT 'tag'`);
+} catch (e) { /* column already exists */ }
+
 // Seed one default "General" category if table is empty
 const catCount = db.prepare('SELECT COUNT(*) as c FROM categories').get();
 if (catCount.c === 0) {
-  db.prepare('INSERT INTO categories (name, color, sort_order) VALUES (?, ?, ?)').run('General', '#6366f1', 0);
+  db.prepare('INSERT INTO categories (name, color, icon, sort_order) VALUES (?, ?, ?, ?)').run('General', '#9b7db8', 'folder', 0);
 }
 
 // ── Settings Table ──
@@ -52,6 +59,9 @@ const wpmRow = db.prepare("SELECT value FROM settings WHERE key = 'wpm'").get();
 if (!wpmRow) {
   db.prepare("INSERT INTO settings (key, value) VALUES ('wpm', '40')").run();
 }
+
+// Clean orphaned expansion logs from previously deleted snippets
+db.prepare('DELETE FROM expansion_log WHERE snippet_id NOT IN (SELECT id FROM snippets)').run();
 
 // ── Expansion Log Table ──
 db.exec(`
@@ -87,6 +97,8 @@ function updateSnippet(id, { shortcut, title, body, category }) {
 }
 
 function deleteSnippet(id) {
+  // Explicitly clean expansion logs (belt + suspenders with CASCADE)
+  db.prepare('DELETE FROM expansion_log WHERE snippet_id = ?').run(id);
   return db.prepare('DELETE FROM snippets WHERE id = ?').run(id);
 }
 
@@ -108,13 +120,34 @@ function createCategory(name, color) {
   return db.prepare('SELECT * FROM categories WHERE id = ?').get(info.lastInsertRowid);
 }
 
+function updateCategory(id, { name, color, icon }) {
+  const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
+  if (!cat) return { error: 'Category not found' };
+  const newName = (name || cat.name).trim();
+  const newColor = color || cat.color;
+  const newIcon = icon || cat.icon || 'tag';
+  // Rename snippets if name changed
+  if (newName !== cat.name) {
+    db.prepare('UPDATE snippets SET category = ? WHERE category = ?').run(newName, cat.name);
+  }
+  db.prepare('UPDATE categories SET name = ?, color = ?, icon = ? WHERE id = ?').run(newName, newColor, newIcon, id);
+  return db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
+}
+
 function deleteCategory(id) {
   const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
-  if (cat && cat.name === 'General') return { error: 'Cannot delete General category' };
-  // Move snippets in this category to General
-  if (cat) {
-    db.prepare('UPDATE snippets SET category = ? WHERE category = ?').run('General', cat.name);
+  if (!cat) return { error: 'Category not found' };
+
+  // Can't delete the last category
+  const totalCats = db.prepare('SELECT COUNT(*) as c FROM categories').get().c;
+  if (totalCats <= 1) return { error: 'Need at least one category' };
+
+  // Move orphaned snippets to the first remaining category
+  const fallback = db.prepare('SELECT name FROM categories WHERE id != ? ORDER BY sort_order ASC, id ASC LIMIT 1').get(id);
+  if (fallback) {
+    db.prepare('UPDATE snippets SET category = ? WHERE category = ?').run(fallback.name, cat.name);
   }
+
   db.prepare('DELETE FROM categories WHERE id = ?').run(id);
   return { success: true };
 }
@@ -284,6 +317,7 @@ module.exports = {
   searchSnippets,
   getCategories,
   createCategory,
+  updateCategory,
   deleteCategory,
   renameCategory,
   incrementUsage,

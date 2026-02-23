@@ -84,6 +84,7 @@ ipcMain.handle('snippets:delete', (_e, id) => db.deleteSnippet(id));
 ipcMain.handle('snippets:search', (_e, query) => db.searchSnippets(query));
 ipcMain.handle('snippets:getCategories', () => db.getCategories());
 ipcMain.handle('categories:create', (_e, name, color) => db.createCategory(name, color));
+ipcMain.handle('categories:update', (_e, id, data) => db.updateCategory(id, data));
 ipcMain.handle('categories:delete', (_e, id) => db.deleteCategory(id));
 ipcMain.handle('categories:rename', (_e, id, newName) => db.renameCategory(id, newName));
 ipcMain.handle('stats:get', () => db.getStats());

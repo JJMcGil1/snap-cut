@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('snapcut', {
   searchSnippets: (query) => ipcRenderer.invoke('snippets:search', query),
   getCategories: () => ipcRenderer.invoke('snippets:getCategories'),
   createCategory: (name, color) => ipcRenderer.invoke('categories:create', name, color),
+  updateCategory: (id, data) => ipcRenderer.invoke('categories:update', id, data),
   deleteCategory: (id) => ipcRenderer.invoke('categories:delete', id),
   renameCategory: (id, newName) => ipcRenderer.invoke('categories:rename', id, newName),
   getStats: () => ipcRenderer.invoke('stats:get'),

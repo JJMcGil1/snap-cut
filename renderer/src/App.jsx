@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Dashboard from './Dashboard';
 import Settings from './Settings';
+import CategoryModal, { getCategoryIcon } from './CategoryModal';
 import {
   Scissors,
   Search,
@@ -20,6 +21,7 @@ import {
   Tag,
   X,
   Check,
+  Pencil,
 } from 'lucide-react';
 
 function getCategoryClass(cat) {
@@ -44,6 +46,7 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [showNewCategory, setShowNewCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
+  const [editingCategory, setEditingCategory] = useState(null); // null | category obj | 'new'
   const toastTimer = useRef(null);
   const newCatInputRef = useRef(null);
 
@@ -177,7 +180,7 @@ export default function App() {
     }
   };
 
-  // ── Create category ──
+  // ── Create category (inline — legacy, kept for inline input) ──
   const handleCreateCategory = async () => {
     const name = newCategoryName.trim();
     if (!name) return;
@@ -192,6 +195,38 @@ export default function App() {
     }
     setNewCategoryName('');
     setShowNewCategory(false);
+  };
+
+  // ── Save category from modal (create or update) ──
+  const handleSaveCategory = async ({ name, color, icon }) => {
+    if (!window.snapcut) return;
+    if (editingCategory === 'new') {
+      if (categoryNames.includes(name)) {
+        showToast('Category already exists');
+        return;
+      }
+      await window.snapcut.createCategory(name, color);
+      // Now update it with icon (createCategory only takes name, color)
+      const cats = await window.snapcut.getCategories();
+      const created = cats.find((c) => c.name === name);
+      if (created) {
+        await window.snapcut.updateCategory(created.id, { name, color, icon });
+      }
+      showToast(`Category "${name}" created`);
+    } else {
+      const result = await window.snapcut.updateCategory(editingCategory.id, { name, color, icon });
+      if (result?.error) {
+        showToast(result.error);
+        return;
+      }
+      // If the active category was renamed, update it
+      if (activeCategory === editingCategory.name && name !== editingCategory.name) {
+        setActiveCategory(name);
+      }
+      showToast('Category updated');
+    }
+    setEditingCategory(null);
+    await loadData();
   };
 
   // ── Delete category ──
@@ -268,58 +303,48 @@ export default function App() {
               <span>Categories</span>
               <button
                 className="nav-add-cat-btn"
-                onClick={() => setShowNewCategory(true)}
+                onClick={() => setEditingCategory('new')}
                 title="Add category"
               >
                 <Plus size={12} />
               </button>
             </div>
 
-            {/* New category inline input */}
-            {showNewCategory && (
-              <div className="nav-new-cat">
-                <input
-                  ref={newCatInputRef}
-                  className="nav-new-cat-input"
-                  type="text"
-                  placeholder="Category name..."
-                  value={newCategoryName}
-                  onChange={(e) => setNewCategoryName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleCreateCategory();
-                    if (e.key === 'Escape') { setShowNewCategory(false); setNewCategoryName(''); }
-                  }}
-                />
-                <button className="nav-new-cat-ok" onClick={handleCreateCategory}><Check size={12} /></button>
-                <button className="nav-new-cat-cancel" onClick={() => { setShowNewCategory(false); setNewCategoryName(''); }}><X size={12} /></button>
-              </div>
-            )}
-
-            {categories.map((cat) => (
-              <div key={cat.id} className="nav-item-wrap">
-                <button
-                  className={`nav-item ${currentView === 'snippets' && activeCategory === cat.name ? 'active' : ''}`}
-                  onClick={() => {
-                    setActiveCategory(cat.name);
-                    setSearchQuery('');
-                    setCurrentView('snippets');
-                  }}
-                >
-                  <Tag size={16} />
-                  <span>{cat.name}</span>
-                  <span className="nav-item-count">{countFor(cat.name)}</span>
-                </button>
-                {cat.name !== 'General' && (
+            {categories.map((cat) => {
+              const CatIcon = getCategoryIcon(cat.icon);
+              return (
+                <div key={cat.id} className="nav-item-wrap">
                   <button
-                    className="nav-item-delete"
-                    onClick={(e) => { e.stopPropagation(); handleDeleteCategory(cat.id); }}
-                    title={`Delete "${cat.name}"`}
+                    className={`nav-item ${currentView === 'snippets' && activeCategory === cat.name ? 'active' : ''}`}
+                    onClick={() => {
+                      setActiveCategory(cat.name);
+                      setSearchQuery('');
+                      setCurrentView('snippets');
+                    }}
                   >
-                    <X size={11} />
+                    <CatIcon size={16} style={{ color: cat.color || undefined }} />
+                    <span>{cat.name}</span>
+                    <span className="nav-item-count">{countFor(cat.name)}</span>
                   </button>
-                )}
-              </div>
-            ))}
+                  <div className="nav-item-actions">
+                    <button
+                      className="nav-item-edit"
+                      onClick={(e) => { e.stopPropagation(); setEditingCategory(cat); }}
+                      title={`Edit "${cat.name}"`}
+                    >
+                      <Pencil size={11} />
+                    </button>
+                    <button
+                      className="nav-item-delete"
+                      onClick={(e) => { e.stopPropagation(); handleDeleteCategory(cat.id); }}
+                      title={`Delete "${cat.name}"`}
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </nav>
 
           <div className="sidebar-footer">
@@ -337,7 +362,7 @@ export default function App() {
         {/* ── Main area ── */}
         <main className="main-content">
           {currentView === 'dashboard' ? (
-            <Dashboard />
+            <Dashboard categories={categories} />
           ) : currentView === 'settings' ? (
             <Settings theme={theme} onToggleTheme={toggleTheme} />
           ) : (
@@ -371,9 +396,19 @@ export default function App() {
                       className={`snippet-card ${selectedId === s.id ? 'active' : ''}`}
                       onClick={() => selectSnippet(s)}
                     >
-                      <div className={`snippet-icon ${getCategoryClass(s.category)}`}>
-                        <Hash size={16} />
-                      </div>
+                      {(() => {
+                        const catData = categories.find((c) => c.name === s.category);
+                        const catColor = catData?.color || '#9b7db8';
+                        const CatIcon = getCategoryIcon(catData?.icon);
+                        return (
+                          <div
+                            className="snippet-icon"
+                            style={{ background: catColor + '1a', color: catColor }}
+                          >
+                            <CatIcon size={16} />
+                          </div>
+                        );
+                      })()}
                       <div className="snippet-info">
                         <div className="snippet-info-title">{s.title}</div>
                         <div className="snippet-info-shortcut">{s.shortcut}</div>
@@ -497,6 +532,14 @@ export default function App() {
           )}
         </main>
       </div>
+
+      {editingCategory && (
+        <CategoryModal
+          category={editingCategory === 'new' ? null : editingCategory}
+          onSave={handleSaveCategory}
+          onClose={() => setEditingCategory(null)}
+        />
+      )}
 
       {toast && <div className="toast">{toast}</div>}
     </>
