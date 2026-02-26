@@ -1201,19 +1201,66 @@ body {
 
 .dash-card {
   background: var(--bg-card);
-  border: 1px solid var(--border-secondary);
+  border: 1px solid var(--border-primary);
   border-radius: var(--radius-md);
   padding: 18px 20px;
   display: flex;
   align-items: center;
   gap: 14px;
   transition: all var(--transition);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Subtle color glow overlay on each card */
+.dash-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  transition: opacity var(--transition);
+  pointer-events: none;
+  z-index: 0;
 }
 
 .dash-card:hover {
-  box-shadow: var(--shadow-md);
-  border-color: var(--border-primary);
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-1px);
+}
+
+/* Light theme — visible on white */
+.dash-card:nth-child(1)::before {
+  background: linear-gradient(135deg, rgba(220, 60, 72, 0.09) 0%, transparent 60%);
+}
+.dash-card:nth-child(2)::before {
+  background: linear-gradient(135deg, rgba(88, 135, 204, 0.09) 0%, transparent 60%);
+}
+.dash-card:nth-child(3)::before {
+  background: linear-gradient(135deg, rgba(60, 186, 118, 0.09) 0%, transparent 60%);
+}
+.dash-card:nth-child(4)::before {
+  background: linear-gradient(135deg, rgba(200, 148, 80, 0.09) 0%, transparent 60%);
+}
+
+/* Dark theme — dialed back */
+[data-theme="dark"] .dash-card:nth-child(1)::before {
+  background: linear-gradient(135deg, rgba(220, 60, 72, 0.06) 0%, transparent 55%);
+}
+[data-theme="dark"] .dash-card:nth-child(2)::before {
+  background: linear-gradient(135deg, rgba(88, 135, 204, 0.06) 0%, transparent 55%);
+}
+[data-theme="dark"] .dash-card:nth-child(3)::before {
+  background: linear-gradient(135deg, rgba(79, 209, 153, 0.06) 0%, transparent 55%);
+}
+[data-theme="dark"] .dash-card:nth-child(4)::before {
+  background: linear-gradient(135deg, rgba(212, 160, 87, 0.06) 0%, transparent 55%);
+}
+
+/* Ensure card content sits above the glow overlay */
+.dash-card > * {
+  position: relative;
+  z-index: 1;
 }
 
 .dash-card-icon {
