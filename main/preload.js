@@ -38,4 +38,49 @@ contextBridge.exposeInMainWorld('snapcut', {
     // Return cleanup function
     return () => ipcRenderer.removeListener('expansion:done', callback);
   },
+
+  // ═══════════════════════════════════════════════════════════
+  // Auto-Updater API (Self-Signing with Hash Verification)
+  // ═══════════════════════════════════════════════════════════
+  updater: {
+    // Check for updates manually
+    checkForUpdates: () => ipcRenderer.invoke('updater:check'),
+
+    // Download the update
+    downloadUpdate: () => ipcRenderer.invoke('updater:download'),
+
+    // Install the downloaded update (quits app)
+    installUpdate: () => ipcRenderer.invoke('updater:install'),
+
+    // Get current app version
+    getVersion: () => ipcRenderer.invoke('updater:getVersion'),
+
+    // Dismiss the update notification
+    dismissUpdate: () => ipcRenderer.invoke('updater:dismiss'),
+
+    // Event listeners (main → renderer)
+    onUpdateAvailable: (callback) => {
+      const handler = (_event, result) => callback(result);
+      ipcRenderer.on('update:available', handler);
+      return () => ipcRenderer.removeListener('update:available', handler);
+    },
+
+    onDownloadProgress: (callback) => {
+      const handler = (_event, progress) => callback(progress);
+      ipcRenderer.on('update:download-progress', handler);
+      return () => ipcRenderer.removeListener('update:download-progress', handler);
+    },
+
+    onUpdateDownloaded: (callback) => {
+      const handler = (_event, info) => callback(info);
+      ipcRenderer.on('update:downloaded', handler);
+      return () => ipcRenderer.removeListener('update:downloaded', handler);
+    },
+
+    onUpdateError: (callback) => {
+      const handler = (_event, info) => callback(info);
+      ipcRenderer.on('update:error', handler);
+      return () => ipcRenderer.removeListener('update:error', handler);
+    },
+  },
 });

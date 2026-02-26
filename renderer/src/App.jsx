@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import Dashboard from './Dashboard';
 import Settings from './Settings';
 import CategoryModal, { getCategoryIcon } from './CategoryModal';
+import UpdateToast from './UpdateToast';
 import {
   Scissors,
   Search,
@@ -542,6 +543,7 @@ export default function App() {
       )}
 
       {toast && <div className="toast">{toast}</div>}
+      <UpdateToast />
     </>
   );
 }

@@ -43,6 +43,8 @@ export default function Settings({ theme, onToggleTheme }) {
   const [snippetCount, setSnippetCount] = useState(0);
   const [expansionCount, setExpansionCount] = useState(0);
   const [dbSize, setDbSize] = useState('—');
+  const [appVersion, setAppVersion] = useState('1.0.0');
+  const [updateCheckStatus, setUpdateCheckStatus] = useState(null); // null | 'checking' | 'up-to-date' | 'available'
   const [confirmClear, setConfirmClear] = useState(false);
   const [toast, setToast] = useState(null);
   const wpmRef = useRef(null);
@@ -82,6 +84,12 @@ export default function Settings({ theme, onToggleTheme }) {
       // DB info
       const info = await window.snapcut.getDbInfo();
       if (info?.size) setDbSize(info.size);
+
+      // App version from auto-updater
+      if (window.snapcut?.updater?.getVersion) {
+        const ver = await window.snapcut.updater.getVersion();
+        if (ver) setAppVersion(ver);
+      }
     } catch (err) {
       console.error('Settings load error:', err);
     }
@@ -355,7 +363,32 @@ export default function Settings({ theme, onToggleTheme }) {
           <div className="stg-row">
             <div className="stg-row-text">
               <div className="stg-row-title">SnapCut</div>
-              <div className="stg-row-desc">Version 1.0.0</div>
+              <div className="stg-row-desc">Version {appVersion}</div>
+            </div>
+            <div className="stg-row-action">
+              <button
+                className="stg-action-btn"
+                disabled={updateCheckStatus === 'checking'}
+                onClick={async () => {
+                  if (!window.snapcut?.updater?.checkForUpdates) return;
+                  setUpdateCheckStatus('checking');
+                  try {
+                    const result = await window.snapcut.updater.checkForUpdates();
+                    setUpdateCheckStatus(result.updateAvailable ? 'available' : 'up-to-date');
+                    if (!result.updateAvailable) {
+                      flash('You\'re on the latest version');
+                    }
+                    // If update is available, the UpdateToast will show automatically
+                    setTimeout(() => setUpdateCheckStatus(null), 3000);
+                  } catch {
+                    setUpdateCheckStatus(null);
+                    flash('Update check failed');
+                  }
+                }}
+              >
+                <Download size={14} />
+                {updateCheckStatus === 'checking' ? 'Checking...' : updateCheckStatus === 'up-to-date' ? 'Up to date' : 'Check for updates'}
+              </button>
             </div>
           </div>
           <div className="stg-divider" />

@@ -5,4 +5,8 @@ renderer/node_modules
 *.dmg
 *.AppImage
 *.exe
+*.blockmap
+latest.json
+hashes.txt
+release/
 .DS_Store

@@ -1,0 +1,262 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+    # Only trigger on version bumps in package.json
+    paths:
+      - 'package.json'
+
+  # Allow manual trigger
+  workflow_dispatch:
+
+jobs:
+  # First, check if version changed
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check if version changed
+        id: check
+        run: |
+          # Get current version
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          echo "Current version: $CURRENT_VERSION"
+
+          # Check if this version tag already exists
+          if git ls-remote --tags origin | grep -q "refs/tags/v$CURRENT_VERSION"; then
+            echo "Version v$CURRENT_VERSION already released"
+            echo "should_release=false" >> $GITHUB_OUTPUT
+          else
+            echo "New version v$CURRENT_VERSION will be released"
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          fi
+
+  # Build for macOS
+  build-macos:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install renderer dependencies
+        run: cd renderer && npm ci
+
+      - name: Build Electron app
+        run: npm run build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: List release files
+        run: ls -la dist/
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-build
+          path: |
+            dist/*.dmg
+            dist/*.zip
+          if-no-files-found: warn
+
+  # Build for Windows
+  build-windows:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install renderer dependencies
+        run: cd renderer && npm ci
+
+      - name: Build Electron app
+        run: npm run build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: List release files
+        run: dir dist
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: |
+            dist/*.exe
+          if-no-files-found: warn
+
+  # Build for Linux
+  build-linux:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install renderer dependencies
+        run: cd renderer && npm ci
+
+      - name: Build Electron app
+        run: npm run build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: List release files
+        run: ls -la dist/
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-build
+          path: |
+            dist/*.AppImage
+          if-no-files-found: warn
+
+  # Create release with all artifacts
+  create-release:
+    needs: [check-version, build-macos, build-windows, build-linux]
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List downloaded artifacts
+        run: |
+          echo "=== All artifacts ==="
+          find artifacts -type f -name "*" | head -50
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          # Copy all build artifacts to release folder
+          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" -o -name "*.AppImage" \) -exec cp {} release/ \;
+          ls -la release/
+
+      - name: Generate hashes and latest.json
+        run: |
+          cd release
+          VERSION="${{ needs.check-version.outputs.version }}"
+
+          # Initialize latest.json
+          echo "{" > latest.json
+          echo "  \"version\": \"$VERSION\"," >> latest.json
+          echo "  \"releaseDate\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"," >> latest.json
+          echo "  \"releaseNotes\": \"Bug fixes and improvements.\"," >> latest.json
+          echo "  \"platforms\": {" >> latest.json
+
+          FIRST=true
+
+          # Generate hashes for each file
+          for file in *.dmg *.zip *.exe *.AppImage; do
+            if [ -f "$file" ]; then
+              HASH=$(sha256sum "$file" | cut -d' ' -f1)
+              SIZE=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file")
+              echo "$HASH  $file" >> hashes.txt
+
+              # Determine platform
+              PLATFORM=""
+              case "$file" in
+                *.dmg|*mac*.zip|*darwin*.zip) PLATFORM="mac" ;;
+                *.exe) PLATFORM="win" ;;
+                *.AppImage) PLATFORM="linux" ;;
+              esac
+
+              if [ -n "$PLATFORM" ]; then
+                if [ "$FIRST" = true ]; then
+                  FIRST=false
+                else
+                  echo "," >> latest.json
+                fi
+                echo -n "    \"$PLATFORM\": { \"sha256\": \"$HASH\", \"size\": $SIZE }" >> latest.json
+              fi
+            fi
+          done
+
+          echo "" >> latest.json
+          echo "  }" >> latest.json
+          echo "}" >> latest.json
+
+          echo "=== latest.json ==="
+          cat latest.json
+
+          echo "=== hashes.txt ==="
+          cat hashes.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ needs.check-version.outputs.version }}
+          name: SnapCut v${{ needs.check-version.outputs.version }}
+          body: |
+            ## SnapCut v${{ needs.check-version.outputs.version }}
+
+            ### Downloads
+            - **macOS**: Download the `.dmg` file
+            - **Windows**: Download the `.exe` installer
+            - **Linux**: Download the `.AppImage` file
+
+            ### Auto-Update
+            If you already have SnapCut installed, you'll receive an update notification automatically!
+
+            ### Verification
+            All downloads are verified with SHA256 hashes. See `hashes.txt` for checksums.
+          files: |
+            release/*.dmg
+            release/*.zip
+            release/*.exe
+            release/*.AppImage
+            release/latest.json
+            release/hashes.txt
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

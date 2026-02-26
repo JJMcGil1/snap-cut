@@ -1,0 +1,162 @@
+/* ═══════════════════════════════════════════════════════════
+   Update Toast - Bottom Right Popup
+   Uses SnapCut design system variables
+   ═══════════════════════════════════════════════════════════ */
+
+.update-toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 12px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: update-toast-slide-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+@keyframes update-toast-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(100%) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) translateY(0);
+  }
+}
+
+/* Main row - icon, title, actions all inline */
+.update-toast__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.update-toast__icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: var(--accent-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.update-toast__title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.update-toast__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.update-toast__version {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+/* Action buttons inline */
+.update-toast__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.update-toast__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+  border: none;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.update-toast__btn--primary {
+  background: var(--accent);
+  color: var(--text-inverse);
+}
+
+.update-toast__btn--primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+}
+
+.update-toast__btn--primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.update-toast__btn--ghost {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.update-toast__btn--ghost:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.update-toast__btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* Progress bar */
+.update-toast__progress {
+  height: 3px;
+  background: var(--border-primary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.update-toast__progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* Error message */
+.update-toast__error {
+  font-size: 11px;
+  color: var(--danger);
+  padding: 6px 8px;
+  background: var(--danger-light);
+  border-radius: var(--radius-sm);
+  line-height: 1.4;
+}
+
+/* Spinner animation */
+.update-toast__spinner {
+  animation: update-toast-spin 1s linear infinite;
+}
+
+@keyframes update-toast-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

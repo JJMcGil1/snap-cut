@@ -3,6 +3,14 @@ const path = require('path');
 const fs = require('fs');
 const db = require('./database');
 const { startKeyListener, stopKeyListener } = require('./keylistener');
+const {
+  initAutoUpdater,
+  checkForUpdates,
+  downloadUpdate,
+  installUpdate,
+  getCurrentVersion,
+  getLastFoundUpdateInfo,
+} = require('./auto-updater');
 
 // ── Safety net: prevent EPIPE / stream errors from crashing the app ──
 process.on('uncaughtException', (err) => {
@@ -162,6 +170,60 @@ app.whenReady().then(() => {
   ipcMain.on('snippets:changed', () => {
     const updated = db.getAllSnippets();
     startKeyListener(updated);
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // Auto-Updater IPC Handlers (Self-Signing with Hash Verification)
+  // ═══════════════════════════════════════════════════════════
+
+  // Store for update info
+  let currentUpdateInfo = null;
+
+  // Initialize auto-updater
+  initAutoUpdater(mainWindow);
+
+  // Check for updates
+  ipcMain.handle('updater:check', async () => {
+    try {
+      const result = await checkForUpdates();
+      if (result.updateInfo) {
+        currentUpdateInfo = result.updateInfo;
+      }
+      return result;
+    } catch (error) {
+      console.error('[Updater] Check failed:', error);
+      return {
+        updateAvailable: false,
+        currentVersion: getCurrentVersion(),
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  });
+
+  // Download update
+  ipcMain.handle('updater:download', async () => {
+    // Use stored info, or fallback to auto-updater's last found info
+    const updateInfo = currentUpdateInfo || getLastFoundUpdateInfo();
+    if (!updateInfo) {
+      return { success: false, error: 'No update available' };
+    }
+    return downloadUpdate(updateInfo);
+  });
+
+  // Install update
+  ipcMain.handle('updater:install', async () => {
+    return installUpdate();
+  });
+
+  // Get current version
+  ipcMain.handle('updater:getVersion', () => {
+    return getCurrentVersion();
+  });
+
+  // Dismiss update notification
+  ipcMain.handle('updater:dismiss', () => {
+    console.log('[Updater] Update dismissed by user');
+    return { success: true };
   });
 
   app.on('activate', () => {
