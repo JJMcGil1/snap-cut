@@ -204,12 +204,13 @@ function getStats() {
     'SELECT category, COUNT(*) as count, COALESCE(SUM(usage_count), 0) as total_uses FROM snippets GROUP BY category ORDER BY total_uses DESC'
   ).all();
 
-  // Expansions per day (last 30 days)
+  // Expansions per day (last 30 days) — group by LOCAL date, not UTC
   const dailyExpansions = db.prepare(`
-    SELECT DATE(expanded_at) as day, COUNT(*) as count
+    SELECT DATE(expanded_at, 'localtime') as day, COUNT(*) as count
     FROM expansion_log
     WHERE expanded_at >= datetime('now', '-30 days')
-    GROUP BY DATE(expanded_at)
+      AND DATE(expanded_at, 'localtime') <= DATE('now', 'localtime')
+    GROUP BY DATE(expanded_at, 'localtime')
     ORDER BY day ASC
   `).all();
 

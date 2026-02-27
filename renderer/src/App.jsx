@@ -1,11 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Dashboard from './Dashboard';
 import Settings from './Settings';
 import CategoryModal, { getCategoryIcon } from './CategoryModal';
 import UpdateToast from './UpdateToast';
 import {
   Scissors,
-  Search,
   Plus,
   FolderOpen,
   Layers,
@@ -23,6 +22,7 @@ import {
   X,
   Check,
   Pencil,
+  User,
 } from 'lucide-react';
 
 function getCategoryClass(cat) {
@@ -48,6 +48,7 @@ export default function App() {
   const [showNewCategory, setShowNewCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [editingCategory, setEditingCategory] = useState(null); // null | category obj | 'new'
+  const [profile, setProfile] = useState({ firstName: '', lastName: '', email: '', photo: '' });
   const toastTimer = useRef(null);
   const newCatInputRef = useRef(null);
 
@@ -62,6 +63,13 @@ export default function App() {
         setTheme(prefersDark ? 'dark' : 'light');
       }
       loadData();
+      // Load user profile
+      if (window.snapcut) {
+        const saved = await window.snapcut.getSetting('user_profile');
+        if (saved) {
+          try { setProfile(JSON.parse(saved)); } catch {}
+        }
+      }
     })();
   }, []);
 
@@ -243,6 +251,14 @@ export default function App() {
     showToast('Category deleted');
   };
 
+  // ── Save profile (called from Settings) ──
+  const handleSaveProfile = async (newProfile) => {
+    setProfile(newProfile);
+    if (window.snapcut) {
+      await window.snapcut.setSetting('user_profile', JSON.stringify(newProfile));
+    }
+  };
+
   // ── Count per category ──
   const countFor = (cat) => {
     if (cat === 'All') return snippets.length;
@@ -262,19 +278,6 @@ export default function App() {
             <span className="sidebar-title">SnapCut</span>
           </div>
 
-          <div className="sidebar-search">
-            <div className="search-input-wrap">
-              <Search />
-              <input
-                className="search-input"
-                type="text"
-                placeholder="Search snippets..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-          </div>
-
           <nav className="sidebar-nav">
             <div className="nav-section-title">Views</div>
             <button
@@ -283,13 +286,6 @@ export default function App() {
             >
               <LayoutDashboard />
               <span>Dashboard</span>
-            </button>
-            <button
-              className={`nav-item ${currentView === 'settings' ? 'active' : ''}`}
-              onClick={() => setCurrentView('settings')}
-            >
-              <SettingsIcon />
-              <span>Settings</span>
             </button>
             <button
               className={`nav-item ${currentView === 'snippets' && activeCategory === 'All' ? 'active' : ''}`}
@@ -349,14 +345,47 @@ export default function App() {
           </nav>
 
           <div className="sidebar-footer">
-            <button onClick={toggleTheme} title="Toggle theme">
-              {theme === 'dark' ? <Sun /> : <Moon />}
-              <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
+            <button className="sidebar-new-btn" onClick={startNew} title="New snippet">
+              <Plus size={15} />
+              <span>New Snippet</span>
             </button>
-            <button onClick={startNew} title="New snippet">
-              <Plus />
-              <span>New</span>
-            </button>
+
+            <div className="sidebar-account">
+              <div
+                className="sidebar-account-main"
+                onClick={() => setCurrentView('settings')}
+                title="Edit profile"
+              >
+                {profile.photo ? (
+                  <img className="sidebar-account-avatar" src={profile.photo} alt="" />
+                ) : (profile.firstName || profile.lastName) ? (
+                  <div className="sidebar-account-avatar sidebar-account-avatar-initials">
+                    {(profile.firstName?.[0] || '')}{(profile.lastName?.[0] || '')}
+                  </div>
+                ) : (
+                  <div className="sidebar-account-avatar sidebar-account-avatar-empty">
+                    <User size={14} />
+                  </div>
+                )}
+                <div className="sidebar-account-info">
+                  <div className="sidebar-account-name">
+                    {profile.firstName || profile.lastName
+                      ? `${profile.firstName} ${profile.lastName}`.trim()
+                      : 'Set up profile'}
+                  </div>
+                  {profile.email && (
+                    <div className="sidebar-account-email">{profile.email}</div>
+                  )}
+                </div>
+              </div>
+              <button
+                className="sidebar-account-settings"
+                onClick={() => setCurrentView('settings')}
+                title="Settings"
+              >
+                <SettingsIcon size={15} />
+              </button>
+            </div>
           </div>
         </aside>
 
@@ -365,7 +394,7 @@ export default function App() {
           {currentView === 'dashboard' ? (
             <Dashboard categories={categories} />
           ) : currentView === 'settings' ? (
-            <Settings theme={theme} onToggleTheme={toggleTheme} />
+            <Settings theme={theme} onToggleTheme={toggleTheme} profile={profile} onSaveProfile={handleSaveProfile} />
           ) : (
           <div className="content-split">
             {/* Snippet list */}

@@ -16,6 +16,9 @@ import {
   Power,
   BellOff,
   Volume2,
+  User,
+  Camera,
+  Save,
 } from 'lucide-react';
 
 /* ─── Toggle switch ─── */
@@ -32,7 +35,7 @@ function Toggle({ checked, onChange, disabled }) {
   );
 }
 
-export default function Settings({ theme, onToggleTheme }) {
+export default function Settings({ theme, onToggleTheme, profile, onSaveProfile }) {
   const [wpm, setWpm] = useState(40);
   const [wpmInput, setWpmInput] = useState('40');
   const [editingWpm, setEditingWpm] = useState(false);
@@ -47,8 +50,15 @@ export default function Settings({ theme, onToggleTheme }) {
   const [updateCheckStatus, setUpdateCheckStatus] = useState(null); // null | 'checking' | 'up-to-date' | 'available'
   const [confirmClear, setConfirmClear] = useState(false);
   const [toast, setToast] = useState(null);
+  const [profileForm, setProfileForm] = useState({ firstName: '', lastName: '', email: '', photo: '' });
   const wpmRef = useRef(null);
   const toastTimer = useRef(null);
+  const photoInputRef = useRef(null);
+
+  // Sync profile prop into local form state
+  useEffect(() => {
+    if (profile) setProfileForm({ ...profile });
+  }, [profile]);
 
   useEffect(() => {
     loadSettings();
@@ -125,6 +135,35 @@ export default function Settings({ theme, onToggleTheme }) {
     }
   };
 
+  /* ─── Profile ─── */
+  const handlePhotoUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const size = 96;
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const min = Math.min(img.width, img.height);
+        const sx = (img.width - min) / 2;
+        const sy = (img.height - min) / 2;
+        ctx.drawImage(img, sx, sy, min, min, 0, 0, size, size);
+        setProfileForm((f) => ({ ...f, photo: canvas.toDataURL('image/jpeg', 0.8) }));
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveProfile = async () => {
+    if (onSaveProfile) onSaveProfile(profileForm);
+    flash('Profile saved');
+  };
+
   /* ─── Sound ─── */
   const handleSound = async (val) => {
     setSoundEnabled(val);
@@ -175,6 +214,73 @@ export default function Settings({ theme, onToggleTheme }) {
         <h1 className="stg-title">Settings</h1>
         <p className="stg-subtitle">Configure SnapCut to work your way</p>
       </div>
+
+      {/* ─── Profile ─── */}
+      <section className="stg-section">
+        <div className="stg-section-label">
+          <User size={15} />
+          <span>Profile</span>
+        </div>
+        <div className="stg-card">
+          <div className="stg-profile-row">
+            <div
+              className="stg-profile-photo"
+              onClick={() => photoInputRef.current?.click()}
+            >
+              {profileForm.photo ? (
+                <img src={profileForm.photo} alt="" className="stg-profile-photo-img" />
+              ) : (profileForm.firstName || profileForm.lastName) ? (
+                <div className="stg-profile-photo-initials">
+                  {(profileForm.firstName?.[0] || '')}{(profileForm.lastName?.[0] || '')}
+                </div>
+              ) : (
+                <div className="stg-profile-photo-empty">
+                  <Camera size={18} />
+                </div>
+              )}
+              <div className="stg-profile-photo-hover">
+                <Camera size={12} />
+              </div>
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={handlePhotoUpload}
+              />
+            </div>
+            <div className="stg-profile-fields">
+              <div className="stg-profile-name-row">
+                <input
+                  className="stg-profile-input"
+                  type="text"
+                  placeholder="First name"
+                  value={profileForm.firstName}
+                  onChange={(e) => setProfileForm({ ...profileForm, firstName: e.target.value })}
+                />
+                <input
+                  className="stg-profile-input"
+                  type="text"
+                  placeholder="Last name"
+                  value={profileForm.lastName}
+                  onChange={(e) => setProfileForm({ ...profileForm, lastName: e.target.value })}
+                />
+              </div>
+              <input
+                className="stg-profile-input"
+                type="email"
+                placeholder="you@example.com"
+                value={profileForm.email}
+                onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
+              />
+            </div>
+            <button className="stg-profile-save" onClick={handleSaveProfile}>
+              <Save size={14} />
+              Save
+            </button>
+          </div>
+        </div>
+      </section>
 
       {/* ─── Typing Speed ─── */}
       <section className="stg-section">
