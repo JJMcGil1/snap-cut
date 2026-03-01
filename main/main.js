@@ -36,6 +36,7 @@ function createWindow() {
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 16, y: 16 },
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#0f0f12' : '#ffffff',
+    icon: path.join(__dirname, '..', 'build', 'icon.png'),
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -63,7 +64,8 @@ function createWindow() {
 }
 
 function createTray() {
-  const iconPath = path.join(__dirname, 'trayIcon.png');
+  // macOS auto-picks @2x when filename contains "Template"
+  const iconPath = path.join(__dirname, 'trayIconTemplate.png');
   let trayIcon;
   try {
     trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
@@ -147,6 +149,14 @@ ipcMain.handle('clipboard:write', (_e, text) => {
 
 // ── App Lifecycle ──
 app.whenReady().then(() => {
+  // Set Dock icon (macOS ignores BrowserWindow `icon` for the Dock)
+  if (process.platform === 'darwin' && app.dock) {
+    const dockIconPath = path.join(__dirname, '..', 'build', 'icon.png');
+    try {
+      app.dock.setIcon(nativeImage.createFromPath(dockIconPath));
+    } catch {}
+  }
+
   createWindow();
   createTray();
 
