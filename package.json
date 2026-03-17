@@ -1,6 +1,6 @@
 {
   "name": "snapcut",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "description": "SnapCut — Lightning-fast text expander for your desktop",
   "main": "main/main.js",
   "scripts": {
